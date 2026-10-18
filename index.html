@@ -1,151 +1,16 @@
-<!DOCTYPE html>
-<html lang="ta">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VoiceMed - Auto Scanner</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background: #0b132b; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 15px; }
-        
-        .header { width: 100%; max-width: 450px; display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .logo { font-size: 24px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 10px; }
-
-        .main-container { width: 100%; max-width: 450px; display: flex; flex-direction: column; align-items: center; flex: 1; justify-content: center; }
-
-        .camera-box { width: 100%; height: 260px; background: #000; border-radius: 20px; border: 2px solid #38bdf8; overflow: hidden; position: relative; display: flex; justify-content: center; align-items: center; margin: 15px 0; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2); }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        canvas { display: none; }
-        .scan-overlay { position: absolute; border: 2px dashed #38bdf8; width: 85%; height: 75%; border-radius: 12px; pointer-events: none; }
-        .live-tag { position: absolute; top: 10px; left: 10px; background: rgba(34, 197, 94, 0.85); color: white; font-size: 11px; padding: 4px 10px; border-radius: 12px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
-        .dot { width: 6px; height: 6px; background: white; border-radius: 50%; animation: blink 1s infinite; }
-
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-
-        .countdown-overlay { position: absolute; font-size: 50px; font-weight: bold; color: #38bdf8; text-shadow: 0 0 10px rgba(0,0,0,0.8); display: none; }
-
-        .ai-status { font-size: 14px; color: #38bdf8; margin-bottom: 12px; font-weight: 600; text-align: center; }
-        
-        .response-box { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); padding: 18px; border-radius: 16px; width: 100%; text-align: left; font-size: 15px; color: #f1f5f9; line-height: 1.8; margin-bottom: 15px; }
-        .info-row { margin-bottom: 8px; }
-        .info-label { font-weight: bold; color: #38bdf8; }
-        .expired-badge { background: #ef4444; color: white; font-size: 12px; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 6px; }
-
-        .action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%; max-width: 450px; }
-        .btn-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); padding: 14px; border-radius: 14px; color: white; text-align: center; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-        .btn-card i { font-size: 20px; color: #38bdf8; }
-        .btn-card.sos { border-color: rgba(239, 68, 68, 0.6); background: rgba(239, 68, 68, 0.1); }
-        .btn-card.sos i { color: #ef4444; }
-    </style>
-</head>
-<body>
-
-    <div class="header">
-        <div class="logo"><i class="fa-solid fa-notes-medical"></i> VoiceMed</div>
-    </div>
-
-    <div class="main-container">
-        
-        <div class="camera-box">
-            <div class="live-tag"><div class="dot"></div> AUTO SCANNER ACTIVE</div>
-            <video id="webcam" autoplay playsinline></video>
-            <div class="scan-overlay"></div>
-            <div class="countdown-overlay" id="countdown">3</div>
-        </div>
-
-        <div class="ai-status" id="aiStatus">Auto scanning in 3 seconds...</div>
-
-        <div class="response-box" id="responseBox">
-            <div class="info-row"><span class="info-label">💊 Tablet Name:</span> Waiting...</div>
-            <div class="info-row"><span class="info-label">📅 Expiry Date:</span> Waiting...</div>
-            <div class="info-row"><span class="info-label">⏰ When to Take:</span> Waiting...</div>
-        </div>
-    </div>
-
-    <div class="action-grid">
-        <div class="btn-card" onclick="startAutoScan()"><i class="fa-solid fa-rotate-right"></i> Rescan</div>
-        <div class="btn-card" onclick="speakCurrentInfo()"><i class="fa-solid fa-volume-high"></i> Repeat Voice</div>
-    </div>
-
-    <script>
-        const video = document.getElementById('webcam');
-        const aiStatus = document.getElementById('aiStatus');
-        const countdownEl = document.getElementById('countdown');
-        const responseBox = document.getElementById('responseBox');
-
-        let scannedName = "Paracetamol 650mg";
-        let scannedExpiry = "2.8.2024";
-        let scannedDirections = "Take 1 tablet after food twice daily";
-
-        window.onload = () => {
-            initCamera();
-        };
-
-        async function initCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    startAutoScan();
-                };
-            } catch (err) {
-                try {
-                    const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                    video.srcObject = fallbackStream;
-                    video.onloadedmetadata = () => {
-                        startAutoScan();
-                    };
-                } catch(e) {
-                    aiStatus.innerText = "Camera permission denied!";
-                }
-            }
-        }
-
-        function speak(text) {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = "en-IN";
-                utterance.rate = 0.85;
-                window.speechSynthesis.speak(utterance);
-            }
-        }
-
-        function startAutoScan() {
-            let count = 3;
-            countdownEl.style.display = 'block';
-            countdownEl.innerText = count;
-            aiStatus.innerText = "Hold medicine in front of camera...";
-
-            let timer = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    countdownEl.innerText = count;
-                } else {
-                    clearInterval(timer);
-                    countdownEl.style.display = 'none';
-                    executeScanResult();
-                }
-            }, 1000);
-        }
-
-        function executeScanResult() {
-            aiStatus.innerText = "Scan Completed!";
-
-            responseBox.innerHTML = `
-                <div class="info-row"><span class="info-label">💊 Tablet Name:</span> ${scannedName}</div>
-                <div class="info-row"><span class="info-label">📅 Expiry Date:</span> ${scannedExpiry} <span class="expired-badge">EXPIRED</span></div>
-                <div class="info-row"><span class="info-label">⏰ When to Take:</span> ${scannedDirections}</div>
-            `;
-
-            speakCurrentInfo();
-        }
-
-        function speakCurrentInfo() {
-            let voiceMessage = `Tablet name ${scannedName}. Expiry date 2nd August 2024. Directions: ${scannedDirections}.`;
-            speak(voiceMessage);
-        }
-    </script>
-</body>
+<!doctype html>
+<html lang="<!-- figma:lang -->">
+  <head>
+    <!-- figma:head-start -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><!-- figma:title --></title>
+    <!-- figma:head-end -->
+  </head>
+  <body>
+    <!-- figma:body-start -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!-- figma:body-end -->
+  </body>
 </html>
